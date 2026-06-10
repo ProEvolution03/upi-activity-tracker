@@ -3,6 +3,7 @@ import { motion, useAnimation } from 'motion/react';
 import { Transaction, Account } from '../types';
 import { CATEGORIES, formatCurrency } from '../utils';
 import { Trash, Calendar } from 'lucide-react';
+import { getBankLogoDomain } from './AccountCard';
 
 interface TransactionItemProps {
   transaction: Transaction;
@@ -80,12 +81,22 @@ export default function TransactionItem({ transaction, accounts, onDelete }: Tra
             </div>
             
             <div className="flex items-center space-x-2 text-[9px] font-bold uppercase tracking-wider mt-0.5">
-              <span className={`px-1.5 py-0.5 rounded-sm ${
+              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm ${
                 account?.id === 'acc-a'
                   ? 'bg-blue-600/10 border border-blue-500/10 text-blue-400'
                   : 'bg-purple-600/10 border border-purple-500/10 text-purple-400'
               }`}>
-                {account ? account.name : 'Account'}
+                {account && (() => {
+                  const logoDomain = getBankLogoDomain(account.name);
+                  return logoDomain ? (
+                    <img 
+                      src={`https://www.google.com/s2/favicons?sz=32&domain=${logoDomain}`} 
+                      alt="" 
+                      className="w-3 h-3 object-contain rounded-xs bg-white p-0.5 border border-slate-700/50 shrink-0" 
+                    />
+                  ) : null;
+                })()}
+                <span>{account ? account.name : 'Account'}</span>
               </span>
               <span className="flex items-center space-x-0.5 text-slate-500">
                 <Calendar className="w-2.5 h-2.5" />

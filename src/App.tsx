@@ -16,6 +16,7 @@ import AccountCard from './components/AccountCard';
 import TransactionItem from './components/TransactionItem';
 import TransactionModal from './components/TransactionModal';
 import ReportView from './components/ReportView';
+import Login from './components/Login';
 
 // Icons
 import { 
@@ -43,6 +44,17 @@ import {
 export default function App() {
   // State variables
   const [showSplash, setShowSplash] = useState(true);
+
+  // Active Logged-in User
+  const [user, setUser] = useState<{ email: string; name: string; picture: string } | null>(() => {
+    try {
+      const saved = localStorage.getItem('upitrack_active_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'history' | 'reports' | 'settings'>('dashboard');
@@ -80,45 +92,68 @@ export default function App() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null);
 
-  // Load from localStorage on build
+  // Sync user state to localStorage
   useEffect(() => {
+    if (user) {
+      localStorage.setItem('upitrack_active_user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('upitrack_active_user');
+    }
+  }, [user]);
+
+  // Load from localStorage on user change
+  useEffect(() => {
+    if (!user) {
+      setAccounts([]);
+      setTransactions([]);
+      setLastShownWrap('');
+      setIsLoaded(false);
+      return;
+    }
+
     try {
-      const storedAccts = localStorage.getItem('upitrack_accounts');
-      const storedTxs = localStorage.getItem('upitrack_transactions');
-      const storedWrapMonth = localStorage.getItem('upitrack_last_wrap_shown');
+      const storedAccts = localStorage.getItem(`upitrack_accounts_${user.email}`);
+      const storedTxs = localStorage.getItem(`upitrack_transactions_${user.email}`);
+      const storedWrapMonth = localStorage.getItem(`upitrack_last_wrap_shown_${user.email}`);
 
       if (storedAccts) {
         setAccounts(JSON.parse(storedAccts));
+      } else {
+        setAccounts([]);
       }
       if (storedTxs) {
         setTransactions(JSON.parse(storedTxs));
+      } else {
+        setTransactions([]);
       }
       if (storedWrapMonth) {
         setLastShownWrap(storedWrapMonth);
+      } else {
+        setLastShownWrap('');
       }
     } catch (e) {
-      console.error('Error parsing localStorage keys', e);
+      console.error('Error parsing user localStorage keys', e);
     } finally {
       setIsLoaded(true);
     }
-  }, []);
+  }, [user]);
 
   // Save to localStorage on changes
   useEffect(() => {
-    if (isLoaded) {
-      localStorage.setItem('upitrack_accounts', JSON.stringify(accounts));
+    if (isLoaded && user) {
+      localStorage.setItem(`upitrack_accounts_${user.email}`, JSON.stringify(accounts));
     }
-  }, [accounts, isLoaded]);
+  }, [accounts, isLoaded, user]);
 
   useEffect(() => {
-    if (isLoaded) {
-      localStorage.setItem('upitrack_transactions', JSON.stringify(transactions));
+    if (isLoaded && user) {
+      localStorage.setItem(`upitrack_transactions_${user.email}`, JSON.stringify(transactions));
     }
-  }, [transactions, isLoaded]);
+  }, [transactions, isLoaded, user]);
 
   // Check for auto Monthly Wrap on the 1st of every month
   useEffect(() => {
-    if (showSplash || accounts.length === 0) return;
+    if (showSplash || accounts.length === 0 || !user) return;
 
     const today = new Date();
     const dayOfMonth = today.getDate();
@@ -133,10 +168,10 @@ export default function App() {
         setWrapMonthText(prevMonthStr);
         setShowWrapModal(true);
         setLastShownWrap(prevMonthStr);
-        localStorage.setItem('upitrack_last_wrap_shown', prevMonthStr);
+        localStorage.setItem(`upitrack_last_wrap_shown_${user.email}`, prevMonthStr);
       }
     }
-  }, [showSplash, accounts, lastShownWrap]);
+  }, [showSplash, accounts, lastShownWrap, user]);
 
   const showToast = (message: string) => {
     setToastMessage(message);
@@ -421,11 +456,22 @@ export default function App() {
     return <Splash onComplete={() => setShowSplash(false)} />;
   }
 
+  // Google Login check
+  if (!user) {
+    return (
+      <div className="h-[100dvh] w-screen bg-[#030406] text-white flex items-center justify-center font-sans antialiased p-0 sm:p-4 overflow-hidden">
+        <div className="w-full max-w-md h-full sm:h-[812px] sm:max-h-[850px] sm:rounded-[40px] sm:border-8 sm:border-slate-900 bg-[#05070A] relative flex flex-col overflow-hidden shadow-2xl">
+          <Login onLogin={(u) => setUser(u)} />
+        </div>
+      </div>
+    );
+  }
+
   // If no accounts yet, render full screen onboarding
   if (accounts.length === 0) {
     return (
-      <div className="min-h-screen bg-[#030406] text-white flex items-center justify-center font-sans antialiased p-0 sm:p-4">
-        <div className="w-full max-w-md h-full min-h-screen sm:min-h-[812px] sm:max-h-[850px] sm:rounded-[40px] sm:border-8 sm:border-slate-900 bg-[#05070A] relative flex flex-col overflow-hidden shadow-2xl">
+      <div className="h-[100dvh] w-screen bg-[#030406] text-white flex items-center justify-center font-sans antialiased p-0 sm:p-4 overflow-hidden">
+        <div className="w-full max-w-md h-full sm:h-[812px] sm:max-h-[850px] sm:rounded-[40px] sm:border-8 sm:border-slate-900 bg-[#05070A] relative flex flex-col overflow-hidden shadow-2xl">
           <Onboarding onComplete={handleOnboardingComplete} />
         </div>
       </div>
@@ -433,9 +479,9 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#030406] text-white flex items-center justify-center font-sans antialiased p-0 sm:p-4">
+    <div className="h-[100dvh] w-screen bg-[#030406] text-white flex items-center justify-center font-sans antialiased p-0 sm:p-4 overflow-hidden">
       {/* Interactive device viewport simulator for Desktop */}
-      <div className="w-full max-w-md h-full min-h-screen sm:min-h-[812px] sm:max-h-[850px] sm:rounded-[36px] sm:border-8 sm:border-slate-900 bg-[#05070A] relative flex flex-col overflow-hidden shadow-2xl select-none">
+      <div className="w-full max-w-md h-full sm:h-[812px] sm:max-h-[850px] sm:rounded-[36px] sm:border-8 sm:border-slate-900 bg-[#05070A] relative flex flex-col overflow-hidden shadow-2xl select-none">
         
         {/* Dynamic status toast banner */}
         <AnimatePresence>
@@ -720,7 +766,40 @@ export default function App() {
             </div>
 
             <div className="space-y-6 pt-2">
-              
+
+              {/* User Profile Card & Logout */}
+              {user && (
+                <div className="p-4 bg-[#0D1117] border border-slate-800 rounded-2xl flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    {user.picture ? (
+                      <img src={user.picture} alt={user.name} className="w-9 h-9 rounded-full border border-slate-800" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs text-white">
+                        {user.name[0].toUpperCase()}
+                      </div>
+                    )}
+                    <div className="space-y-0.5">
+                      <span className="text-xs font-bold text-white block truncate max-w-[150px]">{user.name}</span>
+                      <span className="text-[9px] text-slate-500 font-mono block truncate max-w-[150px]">{user.email}</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (confirm('Sign out of your account? Your local ledger data will remain saved.')) {
+                        localStorage.removeItem('upitrack_active_user');
+                        setUser(null);
+                        setAccounts([]);
+                        setTransactions([]);
+                        setIsLoaded(false);
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-red-650/10 border border-red-500/20 text-red-400 hover:bg-red-650 hover:text-white rounded-xl text-[9px] font-bold uppercase tracking-wider cursor-pointer transition active:scale-95"
+                  >
+                    Sign Out
+                  </button>
+                </div>
+              )}
+
               {/* Account Limits & Budgets list updater */}
               <div className="p-5 bg-[#0D1117] border border-slate-800 rounded-2xl space-y-4">
                 <span className="text-[10px] uppercase font-bold font-mono tracking-wider text-blue-400">Monthly Budget Thresholds</span>

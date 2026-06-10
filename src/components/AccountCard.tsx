@@ -9,6 +9,30 @@ interface AccountCardProps {
   debits: number;
 }
 
+export const getBankLogoDomain = (name: string): string | null => {
+  const n = name.toLowerCase();
+  if (n.includes('hdfc')) return 'hdfcbank.com';
+  if (n.includes('sbi') || n.includes('state bank')) return 'sbi.co.in';
+  if (n.includes('icici')) return 'icicibank.com';
+  if (n.includes('axis')) return 'axisbank.com';
+  if (n.includes('kotak')) return 'kotak.com';
+  if (n.includes('yes bank') || n.includes('yesbank')) return 'yesbank.in';
+  if (n.includes('cub') || n.includes('city union')) return 'cityunionbank.com';
+  if (n.includes('indian bank')) return 'indianbank.in';
+  if (n.includes('bob') || n.includes('baroda')) return 'bankofbaroda.in';
+  if (n.includes('pnb') || n.includes('punjab national')) return 'pnbindia.in';
+  if (n.includes('paytm')) return 'paytmbank.com';
+  if (n.includes('phonepe')) return 'phonepe.com';
+  if (n.includes('gpay') || n.includes('google pay')) return 'google.com';
+  if (n.includes('amazon')) return 'amazon.in';
+  if (n.includes('airtel')) return 'airtel.in';
+  if (n.includes('canara')) return 'canarabank.com';
+  if (n.includes('union bank')) return 'unionbankofindia.co.in';
+  if (n.includes('idbi')) return 'idbibank.in';
+  if (n.includes('hsbc')) return 'hsbc.co.in';
+  return null;
+};
+
 export default function AccountCard({ account, credits, debits }: AccountCardProps) {
   const netBalance = account.initialBalance + credits - debits;
   const isPositive = netBalance >= 0;
@@ -17,6 +41,8 @@ export default function AccountCard({ account, credits, debits }: AccountCardPro
   const hasBudget = account.budgetLimit > 0;
   const budgetUsage = hasBudget ? (debits / account.budgetLimit) * 100 : 0;
   const isOverBudget = hasBudget && debits > account.budgetLimit;
+  
+  const logoDomain = getBankLogoDomain(account.name);
 
   return (
     <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0D1117] to-[#0A0D14] border border-slate-800 p-5 flex flex-col justify-between h-48 select-none transition-shadow duration-300 ${
@@ -31,12 +57,22 @@ export default function AccountCard({ account, credits, debits }: AccountCardPro
       <div className="space-y-1">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border ${
-              account.id === 'acc-a' 
-                ? 'bg-blue-600/10 border-blue-500/25 text-blue-400 shadow-[0_0_8px_rgba(37,99,235,0.2)]' 
-                : 'bg-purple-600/10 border-purple-500/25 text-purple-400 shadow-[0_0_8px_rgba(147,51,234,0.2)]'
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border overflow-hidden ${
+              logoDomain 
+                ? 'bg-white border-slate-700/80 shadow-[0_0_8px_rgba(255,255,255,0.05)]' 
+                : account.id === 'acc-a' 
+                  ? 'bg-blue-600/10 border-blue-500/25 text-blue-400 shadow-[0_0_8px_rgba(37,99,235,0.2)]' 
+                  : 'bg-purple-600/10 border-purple-500/25 text-purple-400 shadow-[0_0_8px_rgba(147,51,234,0.2)]'
             }`}>
-              <CreditCard className="w-3.5 h-3.5" />
+              {logoDomain ? (
+                <img 
+                  src={`https://www.google.com/s2/favicons?sz=64&domain=${logoDomain}`} 
+                  alt={account.name} 
+                  className="w-4.5 h-4.5 object-contain"
+                />
+              ) : (
+                <CreditCard className="w-3.5 h-3.5" />
+              )}
             </div>
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-100 truncate max-w-[120px]">
               {account.name}

@@ -38,46 +38,28 @@ export default function Splash({ onComplete }: SplashProps) {
 
       {/* Center Logo Group */}
       <div className="flex flex-col items-center justify-center">
-        {/* Animated outer ring */}
+        {/* Animated outer ring containing our logo */}
         <motion.div
           animate={{
-            scale: [1, 1.08, 1],
+            scale: [1, 1.05, 1],
             boxShadow: [
-              '0 0 20px 0px rgba(37, 99, 235, 0.2)',
-              '0 0 35px 10px rgba(37, 99, 235, 0.4)',
-              '0 0 20px 0px rgba(37, 99, 235, 0.2)',
+              '0 0 20px 0px rgba(37, 99, 235, 0.15)',
+              '0 0 35px 8px rgba(37, 99, 235, 0.3)',
+              '0 0 20px 0px rgba(37, 99, 235, 0.15)',
             ],
           }}
           transition={{
             repeat: Infinity,
-            duration: 2,
+            duration: 2.2,
             ease: 'easeInOut',
           }}
-          className="w-20 h-20 rounded-2xl bg-blue-600 flex items-center justify-center mb-6"
+          className="w-20 h-20 rounded-2xl overflow-hidden mb-6 border border-slate-800"
         >
-          {/* Inner details to represent instant payment arrows */}
-          <div className="relative w-16 h-16 rounded-xl bg-slate-950/20 backdrop-blur-xs flex items-center justify-center">
-            <motion.span
-              initial={{ scale: 0.6, rotate: -15 }}
-              animate={{ scale: 1, rotate: 0 }}
-              transition={{ duration: 0.6, type: 'spring' }}
-              className="text-3xl font-black italic text-white tracking-widest font-sans"
-            >
-              U
-            </motion.span>
-            
-            {/* Double UPI diagonal arrows logo style */}
-            <div className="absolute top-2 right-2 flex space-x-1">
-              <motion.div 
-                animate={{ x: [0, 2, 0], y: [0, -2, 0] }}
-                transition={{ repeat: Infinity, duration: 1.5 }}
-                className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" 
-              />
-            </div>
-            <div className="absolute bottom-2 left-2 flex space-x-1">
-              <div className="w-1.5 h-1.5 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.8)]" />
-            </div>
-          </div>
+          <img 
+            src="/apple-touch-icon.png" 
+            alt="UPI PayTrack Logo" 
+            className="w-full h-full object-cover" 
+          />
         </motion.div>
 
         {/* Title */}
