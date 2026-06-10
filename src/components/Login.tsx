@@ -1,23 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { ShieldCheck, Mail, LogIn, ChevronRight, Settings } from 'lucide-react';
+import { ShieldCheck, Key } from 'lucide-react';
 
 interface LoginProps {
   onLogin: (user: { email: string; name: string; picture: string }) => void;
 }
 
 export default function Login({ onLogin }: LoginProps) {
-  const [clientId, setClientId] = useState(() => localStorage.getItem('upitrack_google_client_id') || '');
-  const [showConfig, setShowConfig] = useState(false);
-  const [simEmail, setSimEmail] = useState('demo.user@gmail.com');
-  const [simName, setSimName] = useState('Demo User');
-  const [loginMode, setLoginMode] = useState<'real' | 'simulated'>('simulated');
+  // Try to load client ID from Vite env variable first, fallback to localStorage
+  const envClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+  const [clientId, setClientId] = useState(() => envClientId || localStorage.getItem('upitrack_google_client_id') || '');
+  const [tempClientId, setTempClientId] = useState('');
   const [error, setError] = useState('');
 
   // Save client ID on change
   const handleSaveClientId = (val: string) => {
-    setClientId(val.trim());
-    localStorage.setItem('upitrack_google_client_id', val.trim());
+    const trimmed = val.trim();
+    setClientId(trimmed);
+    localStorage.setItem('upitrack_google_client_id', trimmed);
     setError('');
   };
 
@@ -56,7 +55,7 @@ export default function Login({ onLogin }: LoginProps) {
 
   // Setup Google Sign In button if script loaded and client ID exists
   useEffect(() => {
-    if (loginMode === 'real' && clientId && (window as any).google) {
+    if (clientId && (window as any).google) {
       try {
         (window as any).google.accounts.id.initialize({
           client_id: clientId,
@@ -77,26 +76,7 @@ export default function Login({ onLogin }: LoginProps) {
         setError('Google authentication initialization failed. Check your Client ID.');
       }
     }
-  }, [clientId, loginMode]);
-
-  const handleSimulatedSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    if (!simEmail.includes('@')) {
-      setError('Please enter a valid email address.');
-      return;
-    }
-    
-    // Simulate user avatar using standard initials
-    const initials = simName.split(' ').map(n => n[0]).join('').toUpperCase();
-    const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(simName)}&background=2563EB&color=fff&bold=true`;
-
-    onLogin({
-      email: simEmail.trim().toLowerCase(),
-      name: simName.trim(),
-      picture: avatarUrl,
-    });
-  };
+  }, [clientId]);
 
   return (
     <div className="absolute inset-0 bg-[#05070A] overflow-y-auto px-6 py-8 flex flex-col justify-between text-white no-scrollbar select-none">
@@ -104,7 +84,7 @@ export default function Login({ onLogin }: LoginProps) {
 
       {/* Top Bar / App Header */}
       <div className="text-center mt-6 relative z-10 flex flex-col items-center">
-        {/* Sleek App Icon Container */}
+        {/* App Icon Container */}
         <div className="w-20 h-20 rounded-2xl overflow-hidden mb-5 border border-slate-800 shadow-xl shadow-blue-500/5">
           <img 
             src="/apple-touch-icon.png" 
@@ -127,127 +107,64 @@ export default function Login({ onLogin }: LoginProps) {
           </div>
         )}
 
-        {/* Tab selector for Real vs Simulated Login */}
-        <div className="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800/80 mb-5 text-[10px] font-bold uppercase tracking-wider">
-          <button
-            type="button"
-            onClick={() => setLoginMode('simulated')}
-            className={`py-2 rounded-lg transition-all ${
-              loginMode === 'simulated' ? 'bg-blue-600 text-white' : 'text-slate-400'
-            }`}
-          >
-            Demo Sandbox
-          </button>
-          <button
-            type="button"
-            onClick={() => setLoginMode('real')}
-            className={`py-2 rounded-lg transition-all ${
-              loginMode === 'real' ? 'bg-blue-600 text-white' : 'text-slate-400'
-            }`}
-          >
-            Google OAuth
-          </button>
-        </div>
+        <div className="bg-[#0D1117] border border-slate-800 p-6 rounded-2xl w-full text-center space-y-4">
+          <span className="text-[9px] uppercase font-bold tracking-wider text-blue-400 font-mono block">
+            Google Identity Login
+          </span>
 
-        <AnimatePresence mode="wait">
-          {loginMode === 'simulated' ? (
-            <motion.form
-              key="sim-form"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              onSubmit={handleSimulatedSubmit}
-              className="space-y-4"
+          {clientId ? (
+            <div className="flex flex-col items-center justify-center py-4 space-y-4">
+              <div id="googleSignInBtn" className="my-2 z-20"></div>
+              
+              <button
+                onClick={() => handleSaveClientId('')}
+                className="text-[9px] text-slate-500 hover:text-slate-350 underline uppercase tracking-wider"
+              >
+                Change Client ID Config
+              </button>
+            </div>
+          ) : (
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (tempClientId.trim()) {
+                  handleSaveClientId(tempClientId);
+                }
+              }}
+              className="space-y-4 text-left"
             >
-              <div className="bg-[#0D1117] border border-slate-800 p-5 rounded-2xl space-y-4">
-                <span className="text-[9px] uppercase font-bold tracking-wider text-blue-400 font-mono block">
-                  Interactive Dev Sandbox Mode
-                </span>
-                
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">User Display Name</label>
+              <p className="text-xs text-slate-400 font-semibold leading-relaxed">
+                Google Client ID is required to sign in. Enter it below to initialize Google Sign-in:
+              </p>
+              
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">OAuth Client ID</label>
+                <div className="relative">
+                  <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                   <input
                     type="text"
                     required
-                    value={simName}
-                    onChange={(e) => setSimName(e.target.value)}
-                    placeholder="Enter full name"
-                    className="w-full bg-[#161B22] border border-slate-800 focus:border-blue-500 rounded-xl px-3 py-2 text-sm outline-hidden font-semibold transition"
+                    value={tempClientId}
+                    onChange={(e) => setTempClientId(e.target.value)}
+                    placeholder="Paste Client ID here"
+                    className="w-full bg-[#161B22] border border-slate-800 focus:border-blue-500 rounded-xl pl-10 pr-3 py-2 text-xs outline-hidden font-semibold transition text-slate-300"
                   />
                 </div>
-
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Google Email Address</label>
-                  <div className="relative">
-                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                    <input
-                      type="email"
-                      required
-                      value={simEmail}
-                      onChange={(e) => setSimEmail(e.target.value)}
-                      placeholder="e.g. user@gmail.com"
-                      className="w-full bg-[#161B22] border border-slate-800 focus:border-blue-500 rounded-xl pl-10 pr-3 py-2 text-sm outline-hidden font-semibold transition"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full mt-2 h-11 bg-blue-600 hover:bg-blue-500 text-white font-bold uppercase tracking-wider text-xs rounded-xl flex items-center justify-center space-x-2 transition cursor-pointer"
-                >
-                  <LogIn className="w-4 h-4" />
-                  <span>Launch Demo Ledger</span>
-                </button>
               </div>
-            </motion.form>
-          ) : (
-            <motion.div
-              key="real-form"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="space-y-4 flex flex-col items-center"
-            >
-              <div className="bg-[#0D1117] border border-slate-800 p-5 rounded-2xl w-full text-center space-y-4">
-                <span className="text-[9px] uppercase font-bold tracking-wider text-blue-400 font-mono block">
-                  Google API Integration
-                </span>
 
-                {clientId ? (
-                  <div className="flex flex-col items-center justify-center py-2">
-                    <div id="googleSignInBtn" className="my-2 z-20"></div>
-                    <button
-                      onClick={() => handleSaveClientId('')}
-                      className="text-[9px] text-slate-500 hover:text-slate-300 underline uppercase tracking-wider mt-4"
-                    >
-                      Clear Client ID Config
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-3.5 text-left">
-                    <p className="text-xs text-slate-400 font-semibold leading-relaxed">
-                      To enable live Google Sign-in on your domain, configure your Google OAuth Client ID below:
-                    </p>
-                    
-                    <div className="space-y-1">
-                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">OAuth Client ID</label>
-                      <input
-                        type="text"
-                        placeholder="Paste your client ID from Google Console"
-                        onChange={(e) => handleSaveClientId(e.target.value)}
-                        className="w-full bg-[#161B22] border border-slate-800 focus:border-blue-500 rounded-xl px-3 py-2.5 text-xs outline-hidden font-semibold transition text-slate-300"
-                      />
-                    </div>
-                    
-                    <div className="p-3 bg-blue-600/5 border border-blue-500/10 rounded-xl text-[9px] leading-relaxed text-blue-400 font-semibold font-mono uppercase">
-                      ⚠️ Needs Authorized Javascript Origin `https://YOUR_DOMAIN.netlify.app` configured in Google Console!
-                    </div>
-                  </div>
-                )}
+              <button
+                type="submit"
+                className="w-full mt-2 h-11 bg-blue-600 hover:bg-blue-500 text-white font-bold uppercase tracking-wider text-xs rounded-xl flex items-center justify-center space-x-2 transition cursor-pointer"
+              >
+                <span>Save & Initialize Google Login</span>
+              </button>
+              
+              <div className="p-3 bg-blue-600/5 border border-blue-500/10 rounded-xl text-[9px] leading-relaxed text-blue-400 font-semibold font-mono uppercase">
+                💡 Note: You can also define VITE_GOOGLE_CLIENT_ID in your .env file or Netlify build settings to set this automatically!
               </div>
-            </motion.div>
+            </form>
           )}
-        </AnimatePresence>
+        </div>
       </div>
 
       {/* Footer / Privacy notice */}
