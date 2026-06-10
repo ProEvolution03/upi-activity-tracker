@@ -1,0 +1,6 @@
+{
+  "name": "UPI Payment Tracker",
+  "description": "Track manual transactions, expenses, credits, and budget limits across multiple bank accounts in a polished mobile-first dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
