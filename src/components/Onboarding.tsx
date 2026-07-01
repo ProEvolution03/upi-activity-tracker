@@ -57,7 +57,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   };
 
   return (
-    <div className="absolute inset-0 bg-[#05070A] overflow-y-auto px-6 py-8 flex flex-col justify-start text-white no-scrollbar">
+    <div className="absolute inset-0 bg-[#05070A] overflow-y-auto px-6 pt-[calc(env(safe-area-inset-top,0px)+32px)] pb-[calc(env(safe-area-inset-bottom,0px)+20px)] flex flex-col justify-start text-white no-scrollbar">
       <div className="absolute top-0 left-0 right-0 h-40 bg-gradient-to-b from-blue-600/10 to-transparent pointer-events-none" />
 
       {/* Header */}

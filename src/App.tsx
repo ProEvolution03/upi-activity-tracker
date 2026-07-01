@@ -6,7 +6,8 @@ import {
   formatDate, 
   exportToCSV, 
   CATEGORIES, 
-  QUICK_SHORTCUTS 
+  QUICK_SHORTCUTS,
+  sha256
 } from './utils';
 
 // Core Sub-components
@@ -90,7 +91,66 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState('');
 
   const [isLoaded, setIsLoaded] = useState(false);
+  const isLoadedRef = React.useRef(false);
   const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null);
+
+  // Sync status state
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
+
+  // Cloud Sync upload function
+  const uploadToCloud = async (uEmail: string, currentAccts: Account[], currentTxs: Transaction[]) => {
+    try {
+      setSyncStatus('syncing');
+      const hashedEmail = await sha256(uEmail);
+      const res = await fetch(`https://kvdb.io/EXg84EbiWKfrmwVrgpqNQG/${hashedEmail}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accounts: currentAccts, transactions: currentTxs }),
+      });
+      if (res.ok) {
+        setSyncStatus('synced');
+      } else {
+        setSyncStatus('error');
+      }
+    } catch (e) {
+      console.error('Cloud sync upload failed', e);
+      setSyncStatus('error');
+    }
+  };
+
+  // Cloud Sync fetch function
+  const fetchFromCloud = async (uEmail: string, localAccts: Account[], localTxs: Transaction[]) => {
+    try {
+      setSyncStatus('syncing');
+      const hashedEmail = await sha256(uEmail);
+      const res = await fetch(`https://kvdb.io/EXg84EbiWKfrmwVrgpqNQG/${hashedEmail}`);
+      if (res.ok) {
+        const cloudData = await res.json();
+        if (cloudData && (cloudData.accounts || cloudData.transactions)) {
+          const cloudTxs = cloudData.transactions || [];
+          const cloudAccts = cloudData.accounts || [];
+          
+          // Compare cloud vs local: restore if local is empty or cloud has newer/more data
+          if (localAccts.length === 0 || cloudTxs.length >= localTxs.length) {
+            setAccounts(cloudAccts);
+            setTransactions(cloudTxs);
+            
+            // Write immediately to local storage to sync up
+            localStorage.setItem(`upitrack_accounts_${uEmail}`, JSON.stringify(cloudAccts));
+            localStorage.setItem(`upitrack_transactions_${uEmail}`, JSON.stringify(cloudTxs));
+            
+            setSyncStatus('synced');
+            return { accounts: cloudAccts, transactions: cloudTxs };
+          }
+        }
+      }
+      setSyncStatus('synced');
+    } catch (e) {
+      console.error('Cloud sync download failed', e);
+      setSyncStatus('error');
+    }
+    return null;
+  };
 
   // Sync user state to localStorage
   useEffect(() => {
@@ -107,22 +167,49 @@ export default function App() {
       setAccounts([]);
       setTransactions([]);
       setLastShownWrap('');
+      isLoadedRef.current = false;
       setIsLoaded(false);
+      setSyncStatus('idle');
       return;
     }
 
     try {
-      const storedAccts = localStorage.getItem(`upitrack_accounts_${user.email}`);
-      const storedTxs = localStorage.getItem(`upitrack_transactions_${user.email}`);
-      const storedWrapMonth = localStorage.getItem(`upitrack_last_wrap_shown_${user.email}`);
+      let storedAccts = localStorage.getItem(`upitrack_accounts_${user.email}`);
+      let storedTxs = localStorage.getItem(`upitrack_transactions_${user.email}`);
+      let storedWrapMonth = localStorage.getItem(`upitrack_last_wrap_shown_${user.email}`);
+
+      // Migration fallback from generic keys
+      if (!storedAccts) {
+        const genericAccts = localStorage.getItem('upitrack_accounts');
+        const genericTxs = localStorage.getItem('upitrack_transactions');
+        const genericWrapMonth = localStorage.getItem('upitrack_last_wrap_shown');
+
+        if (genericAccts) {
+          storedAccts = genericAccts;
+          localStorage.setItem(`upitrack_accounts_${user.email}`, genericAccts);
+        }
+        if (genericTxs) {
+          storedTxs = genericTxs;
+          localStorage.setItem(`upitrack_transactions_${user.email}`, genericTxs);
+        }
+        if (genericWrapMonth) {
+          storedWrapMonth = genericWrapMonth;
+          localStorage.setItem(`upitrack_last_wrap_shown_${user.email}`, genericWrapMonth);
+        }
+      }
+
+      let activeAccts: Account[] = [];
+      let activeTxs: Transaction[] = [];
 
       if (storedAccts) {
-        setAccounts(JSON.parse(storedAccts));
+        activeAccts = JSON.parse(storedAccts);
+        setAccounts(activeAccts);
       } else {
         setAccounts([]);
       }
       if (storedTxs) {
-        setTransactions(JSON.parse(storedTxs));
+        activeTxs = JSON.parse(storedTxs);
+        setTransactions(activeTxs);
       } else {
         setTransactions([]);
       }
@@ -131,25 +218,34 @@ export default function App() {
       } else {
         setLastShownWrap('');
       }
+      
+      isLoadedRef.current = true;
+      setIsLoaded(true);
+
+      // Perform background cloud sync
+      fetchFromCloud(user.email, activeAccts, activeTxs);
+
     } catch (e) {
       console.error('Error parsing user localStorage keys', e);
-    } finally {
+      isLoadedRef.current = true;
       setIsLoaded(true);
     }
   }, [user]);
 
-  // Save to localStorage on changes
+  // Save to localStorage and sync to cloud on changes, ONLY if load completed
   useEffect(() => {
-    if (isLoaded && user) {
+    if (isLoadedRef.current && user) {
       localStorage.setItem(`upitrack_accounts_${user.email}`, JSON.stringify(accounts));
+      uploadToCloud(user.email, accounts, transactions);
     }
-  }, [accounts, isLoaded, user]);
+  }, [accounts, user]);
 
   useEffect(() => {
-    if (isLoaded && user) {
+    if (isLoadedRef.current && user) {
       localStorage.setItem(`upitrack_transactions_${user.email}`, JSON.stringify(transactions));
+      uploadToCloud(user.email, accounts, transactions);
     }
-  }, [transactions, isLoaded, user]);
+  }, [transactions, user]);
 
   // Check for auto Monthly Wrap on the 1st of every month
   useEffect(() => {
@@ -159,7 +255,6 @@ export default function App() {
     const dayOfMonth = today.getDate();
 
     if (dayOfMonth === 1) {
-      // Get previous month string in format YYYY-MM
       const prevMonthDate = new Date();
       prevMonthDate.setMonth(today.getMonth() - 1);
       const prevMonthStr = prevMonthDate.toISOString().slice(0, 7);
@@ -377,6 +472,7 @@ export default function App() {
       localStorage.clear();
       setAccounts([]);
       setTransactions([]);
+      setUser(null);
       setActiveTab('dashboard');
       showToast('All ledger memory wiped.');
     }
@@ -384,23 +480,27 @@ export default function App() {
 
   // Math Calculations (Memoized for peak UI rendering performance)
   const statsByAccount = useMemo(() => {
-    const maps: Record<string, { credits: number; debits: number }> = {};
+    const maps: Record<string, { credits: number; debits: number; thisMonthDebits: number }> = {};
+    const currentMonthStr = new Date().toISOString().slice(0, 7);
     
     // Initialize
     accounts.forEach((acc) => {
-      maps[acc.id] = { credits: 0, debits: 0 };
+      maps[acc.id] = { credits: 0, debits: 0, thisMonthDebits: 0 };
     });
 
     // Populate
     transactions.forEach((tx) => {
       if (!maps[tx.accountId]) {
         // Safe guard in case account deleted
-        maps[tx.accountId] = { credits: 0, debits: 0 };
+        maps[tx.accountId] = { credits: 0, debits: 0, thisMonthDebits: 0 };
       }
       if (tx.type === 'credit') {
         maps[tx.accountId].credits += tx.amount;
       } else {
         maps[tx.accountId].debits += tx.amount;
+        if (tx.date && tx.date.startsWith(currentMonthStr)) {
+          maps[tx.accountId].thisMonthDebits += tx.amount;
+        }
       }
     });
 
@@ -412,12 +512,22 @@ export default function App() {
     let combinedBalance = 0;
     let combinedCredits = 0;
     let combinedDebits = 0;
+    const currentMonthStr = new Date().toISOString().slice(0, 7);
 
     accounts.forEach((acc) => {
-      const stats = statsByAccount[acc.id] || { credits: 0, debits: 0 };
+      const stats = statsByAccount[acc.id] || { credits: 0, debits: 0, thisMonthDebits: 0 };
       combinedBalance += acc.initialBalance + stats.credits - stats.debits;
-      combinedCredits += stats.credits;
-      combinedDebits += stats.debits;
+    });
+
+    // Sum income/expenses for the current calendar month
+    transactions.forEach((tx) => {
+      if (tx.date && tx.date.startsWith(currentMonthStr)) {
+        if (tx.type === 'credit') {
+          combinedCredits += tx.amount;
+        } else {
+          combinedDebits += tx.amount;
+        }
+      }
     });
 
     return {
@@ -425,7 +535,7 @@ export default function App() {
       credits: combinedCredits,
       debits: combinedDebits,
     };
-  }, [accounts, statsByAccount]);
+  }, [accounts, transactions, statsByAccount]);
 
   // Filtered transactions for the History panel
   const filteredTxs = useMemo(() => {
@@ -501,53 +611,83 @@ export default function App() {
         {/* TAB VIEW 1: DASHBOARD                   */}
         {/* ======================================= */}
         {activeTab === 'dashboard' && (
-          <div className="flex-1 flex flex-col justify-start overflow-y-auto pb-24 no-scrollbar">
+          <div className="flex-1 flex flex-col justify-start overflow-y-auto safe-pb-content no-scrollbar">
             
             {/* Header branding & quick action bar */}
-            <div className="px-5 pt-6 pb-4 flex items-center justify-between sticky top-0 bg-[#05070A]/90 backdrop-blur-md z-20">
-              <div>
-                <span className="text-[9px] tracking-widest uppercase font-mono text-blue-400 font-extrabold">Instant Feed</span>
-                <h1 className="text-base font-black uppercase tracking-wider bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">
-                  UPI PayTrack
-                </h1>
+            <div className="px-5 pb-4 safe-pt-header flex items-center justify-between sticky top-0 bg-[#05070A]/90 backdrop-blur-md z-20 border-b border-slate-900/60">
+              <div className="flex items-center space-x-2.5">
+                {user.picture && (
+                  <img 
+                    src={user.picture} 
+                    alt={user.name} 
+                    className="w-7 h-7 rounded-full border border-slate-800" 
+                  />
+                )}
+                <div>
+                  <h1 className="text-sm font-extrabold tracking-wider bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">
+                    PAYTRACK
+                  </h1>
+                  <span className={`text-[8px] font-mono font-bold uppercase tracking-wider block -mt-0.5 ${
+                    syncStatus === 'syncing' ? 'text-yellow-450 animate-pulse' :
+                    syncStatus === 'synced' ? 'text-emerald-400' :
+                    syncStatus === 'error' ? 'text-red-400' : 'text-slate-500'
+                  }`}>
+                    {syncStatus === 'syncing' ? 'Syncing 🔄' :
+                     syncStatus === 'synced' ? 'Synced ☁️' :
+                     syncStatus === 'error' ? 'Offline Mode ⚠️' : 'Disconnected'}
+                  </span>
+                </div>
               </div>
               <button
                 onClick={() => {
                   setShortcutData(null);
                   setIsModalOpen(true);
                 }}
-                className="w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center shadow-lg shadow-blue-550/20 active:scale-95 transition cursor-pointer"
+                className="w-8 h-8 rounded-full bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center shadow-lg active:scale-95 transition cursor-pointer"
                 title="Add manual transaction"
               >
-                <Plus className="w-5 h-5" />
+                <Plus className="w-4.5 h-4.5" />
               </button>
             </div>
 
             {/* Dashboard content */}
-            <div className="px-5 space-y-5">
+            <div className="px-5 py-4 space-y-5">
               
-              {/* Optional Prompt: Check if 1st of month wrap is pending */}
-              <div className="bg-gradient-to-r from-blue-600/10 via-indigo-650/5 to-transparent border border-blue-500/15 p-4 rounded-2xl flex items-center justify-between">
-                <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1">
-                    <Sparkles className="w-3.5 h-3.5 text-blue-400" /> Previous Month wrap
-                  </h4>
-                  <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-0.5">Explore analytical breakdown of ledger.</p>
+              {/* Premium Hero Net Worth Card */}
+              <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-850 rounded-3xl p-5 shadow-lg shadow-black/25">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
+                
+                <span className="text-[8px] uppercase tracking-widest font-mono text-slate-500 font-bold block mb-1">Total Available Net Worth</span>
+                <h3 className="text-2xl font-black text-white font-sans tracking-tight">
+                  {formatCurrency(summaryTotals.balance)}
+                </h3>
+                
+                <div className="grid grid-cols-2 gap-4 border-t border-slate-800/60 pt-4 mt-4 text-[9px] uppercase font-bold tracking-wider text-slate-500">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-450 shrink-0">
+                      <TrendingUp className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <span className="block text-[8px] text-slate-500">Month Income</span>
+                      <b className="text-emerald-450 font-mono text-xs">+{formatCurrency(summaryTotals.credits)}</b>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <div className="w-7 h-7 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 shrink-0">
+                      <TrendingDown className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <span className="block text-[8px] text-slate-500">Month Spends</span>
+                      <b className="text-red-450 font-mono text-xs">-{formatCurrency(summaryTotals.debits)}</b>
+                    </div>
+                  </div>
                 </div>
-                <button
-                  onClick={() => {
-                    setWrapMonthText(new Date().toISOString().slice(0, 7));
-                    setShowWrapModal(true);
-                  }}
-                  className="text-[10px] uppercase tracking-wider font-bold px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-white"
-                >
-                  View Pack
-                </button>
               </div>
 
               {/* Bank Accounts Section Title */}
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold font-mono tracking-wider text-blue-400">Linked UPI Accounts</span>
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[10px] uppercase font-bold font-mono tracking-wider text-slate-400">Linked UPI Accounts</span>
                 <button
                   onClick={() => setIsAddingAccount(true)}
                   className="text-[10px] font-bold text-slate-400 hover:text-white flex items-center space-x-1 uppercase tracking-wider"
@@ -560,37 +700,17 @@ export default function App() {
               {/* Horizontal Scroll/Stack of accounts cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 {accounts.map((acct) => {
-                  const stats = statsByAccount[acct.id] || { credits: 0, debits: 0 };
+                  const stats = statsByAccount[acct.id] || { credits: 0, debits: 0, thisMonthDebits: 0 };
                   return (
                     <AccountCard 
                        key={acct.id} 
                        account={acct} 
                        credits={stats.credits} 
                        debits={stats.debits} 
+                       thisMonthDebits={stats.thisMonthDebits || 0}
                      />
                   );
                 })}
-              </div>
-
-              {/* Combined Totals Aggregates Box */}
-              <div className="bg-[#0D1117] border border-slate-800 rounded-2xl p-4.5 space-y-3">
-                <span className="text-[9px] uppercase tracking-wider font-mono text-slate-500 font-bold block">Combined Balances Summary</span>
-                <div className="flex items-end justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Net Worth:</span>
-                  <span className="text-lg font-bold text-emerald-400 font-mono tracking-tight shadow-[0_0_12px_rgba(16,185,129,0.1)]">
-                    {formatCurrency(summaryTotals.balance)}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 border-t border-[#161B22] pt-2.5 text-[9px] uppercase font-bold tracking-wider text-slate-500">
-                  <div className="flex items-center space-x-1.5">
-                    <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>Credits: <b className="text-emerald-450 font-mono text-xs">{formatCurrency(summaryTotals.credits)}</b></span>
-                  </div>
-                  <div className="flex items-center space-x-1.5">
-                    <TrendingDown className="w-3.5 h-3.5 text-red-400" />
-                    <span>Debits: <b className="text-red-450 font-mono text-xs">{formatCurrency(summaryTotals.debits)}</b></span>
-                  </div>
-                </div>
               </div>
 
 
@@ -644,7 +764,7 @@ export default function App() {
           <div className="flex-1 flex flex-col justify-start overflow-hidden">
             
             {/* Header with Search and CSV Downloader */}
-            <div className="px-5 pt-6 pb-3 sticky top-0 bg-[#05070A]/95 z-20 space-y-3.5">
+            <div className="px-5 pb-3 safe-pt-header sticky top-0 bg-[#05070A]/95 z-20 space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-bold uppercase tracking-wider text-white">Ledger History</h2>
                 <button
@@ -711,7 +831,7 @@ export default function App() {
             </div>
 
             {/* List container */}
-            <div className="flex-1 overflow-y-auto px-5 pb-24 no-scrollbar">
+            <div className="flex-1 overflow-y-auto px-5 safe-pb-content no-scrollbar">
               {filteredTxs.length === 0 ? (
                 <div className="py-20 text-center flex flex-col items-center justify-center space-y-2">
                   <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">No records match the active criteria.</p>
@@ -758,9 +878,9 @@ export default function App() {
         {/* TAB VIEW 4: SETTINGS / MANAGEMENT        */}
         {/* ======================================= */}
         {activeTab === 'settings' && (
-          <div className="flex-1 flex flex-col justify-start overflow-y-auto pb-24 no-scrollbar px-5">
+          <div className="flex-1 flex flex-col justify-start overflow-y-auto safe-pb-content no-scrollbar px-5">
             
-            <div className="pt-6 pb-2 sticky top-0 bg-[#05070A] z-25">
+            <div className="pb-2 safe-pt-header sticky top-0 bg-[#05070A] z-25 border-b border-slate-900/60">
               <h2 className="text-sm font-bold uppercase tracking-wider text-white">System Settings</h2>
               <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-1">Manage accounts database and ledgers memory.</p>
             </div>
@@ -901,7 +1021,7 @@ export default function App() {
         {/* ======================================= */}
         {/* BOTTOM FLOATING NAV BAR                 */}
         {/* ======================================= */}
-        <div className="absolute bottom-0 left-0 right-0 h-20 bg-[#0D1117]/95 border-t border-slate-800/80 flex items-center justify-between px-6 z-30 backdrop-blur-md no-print">
+        <div className="absolute bottom-0 left-0 right-0 safe-pb-nav bg-[#0D1117]/95 border-t border-slate-800/80 flex items-center justify-between px-6 z-30 backdrop-blur-md no-print">
           
           {/* Dashboard Tab */}
           <button

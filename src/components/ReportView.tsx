@@ -27,7 +27,13 @@ export default function ReportView({ transactions, accounts }: ReportViewProps) 
   };
 
   const months = getMonthsList();
-  const [selectedMonth, setSelectedMonth] = useState(months[0] || new Date().toISOString().slice(0, 7));
+  // Set default month to the latest month that has transactions, fallback to current month
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const monthWithTx = months.find((m) =>
+      transactions.some((t) => t.date && t.date.startsWith(m))
+    );
+    return monthWithTx || months[0] || new Date().toISOString().slice(0, 7);
+  });
 
   // Filter transactions for the selected month
   const monthTransactions = transactions.filter(
@@ -70,11 +76,21 @@ export default function ReportView({ transactions, accounts }: ReportViewProps) 
     const acctTxs = monthTransactions.filter((t) => t.accountId === acct.id);
     const credits = acctTxs.filter((t) => t.type === 'credit').reduce((sum, t) => sum + t.amount, 0);
     const debits = acctTxs.filter((t) => t.type === 'debit').reduce((sum, t) => sum + t.amount, 0);
+    
+    // Calculate running balance by carrying over the starting balance and transactions up to the selected month
+    const historicalTxs = transactions.filter(
+      (t) => t.accountId === acct.id && t.date && t.date.slice(0, 7) <= selectedMonth
+    );
+    const histCredits = historicalTxs.filter((t) => t.type === 'credit').reduce((sum, t) => sum + t.amount, 0);
+    const histDebits = historicalTxs.filter((t) => t.type === 'debit').reduce((sum, t) => sum + t.amount, 0);
+    const runningBalance = acct.initialBalance + histCredits - histDebits;
+
     return {
       name: acct.name,
       credits,
       debits,
       net: credits - debits,
+      runningBalance,
     };
   });
 
@@ -89,8 +105,8 @@ export default function ReportView({ transactions, accounts }: ReportViewProps) 
   };
 
   return (
-    <div className="flex-1 flex flex-col justify-start overflow-y-auto pb-24 text-white select-none">
-      <div className="p-4 flex items-center justify-between no-print sticky top-0 bg-[#05070A]/90 backdrop-blur-md border-b border-slate-900 z-20">
+    <div className="flex-1 flex flex-col justify-start overflow-y-auto safe-pb-content text-white select-none">
+      <div className="px-5 pb-4 safe-pt-header flex items-center justify-between no-print sticky top-0 bg-[#05070A]/90 backdrop-blur-md border-b border-slate-900/60 z-20">
         <h2 className="text-sm font-bold uppercase tracking-wider flex items-center space-x-1.5 text-white">
           <PieChart className="w-5 h-5 text-blue-400" />
           <span>Ledger Reports</span>
@@ -251,11 +267,17 @@ export default function ReportView({ transactions, accounts }: ReportViewProps) 
               <div key={ab.name} className="pt-3.5 first:pt-0 space-y-1.5">
                 <div className="flex items-center justify-between text-xs font-bold text-slate-200">
                   <span>{ab.name}</span>
-                  <span className={`font-mono ${ab.net >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {ab.net >= 0 ? '+' : ''}{formatCurrency(ab.net)}
+                  <span className="text-slate-100 font-mono text-xs">
+                    {formatCurrency(ab.runningBalance)}
                   </span>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-[9px] uppercase font-bold tracking-wider font-mono text-slate-500">
+                <div className="grid grid-cols-3 gap-2 text-[9px] uppercase font-bold tracking-wider font-mono text-slate-500">
+                  <div className="flex justify-between">
+                    <span>Month Net:</span>
+                    <span className={ab.net >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                      {ab.net >= 0 ? '+' : ''}{formatCurrency(ab.net)}
+                    </span>
+                  </div>
                   <div className="flex justify-between">
                     <span>Credits:</span>
                     <span className="text-emerald-500 font-bold">+{formatCurrency(ab.credits)}</span>

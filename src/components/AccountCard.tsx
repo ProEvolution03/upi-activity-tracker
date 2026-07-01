@@ -7,6 +7,7 @@ interface AccountCardProps {
   account: Account;
   credits: number;
   debits: number;
+  thisMonthDebits: number;
 }
 
 export const getBankLogoDomain = (name: string): string | null => {
@@ -33,24 +34,24 @@ export const getBankLogoDomain = (name: string): string | null => {
   return null;
 };
 
-export default function AccountCard({ account, credits, debits }: AccountCardProps) {
+export default function AccountCard({ account, credits, debits, thisMonthDebits }: AccountCardProps) {
   const netBalance = account.initialBalance + credits - debits;
   const isPositive = netBalance >= 0;
 
-  // Budget calculations (based on outgoing debit items)
+  // Budget calculations (based on current month spends)
   const hasBudget = account.budgetLimit > 0;
-  const budgetUsage = hasBudget ? (debits / account.budgetLimit) * 100 : 0;
-  const isOverBudget = hasBudget && debits > account.budgetLimit;
+  const budgetUsage = hasBudget ? (thisMonthDebits / account.budgetLimit) * 100 : 0;
+  const isOverBudget = hasBudget && thisMonthDebits > account.budgetLimit;
   
   const logoDomain = getBankLogoDomain(account.name);
 
   return (
-    <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0D1117] to-[#0A0D14] border border-slate-800 p-5 flex flex-col justify-between h-48 select-none transition-shadow duration-300 ${
-      isPositive ? 'hover:shadow-[0_0_20px_rgba(16,185,129,0.05)]' : 'hover:shadow-[0_0_20px_rgba(239,68,68,0.05)]'
+    <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0D1117]/90 to-[#0A0D14]/90 border border-slate-800/80 p-4 flex flex-col justify-between h-[155px] select-none transition-all duration-300 ${
+      isPositive ? 'hover:shadow-[0_0_15px_rgba(16,185,129,0.03)]' : 'hover:shadow-[0_0_15px_rgba(239,68,68,0.03)]'
     }`}>
       {/* Radiant glow at corner */}
-      <div className={`absolute -top-12 -right-12 w-24 h-24 rounded-full blur-2xl pointer-events-none opacity-25 ${
-        isPositive ? 'bg-emerald-500/20' : 'bg-red-500/20'
+      <div className={`absolute -top-12 -right-12 w-20 h-20 rounded-full blur-2xl pointer-events-none opacity-20 ${
+        isPositive ? 'bg-emerald-500/15' : 'bg-red-500/15'
       }`} />
 
       {/* Account Info */}

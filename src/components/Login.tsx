@@ -55,31 +55,53 @@ export default function Login({ onLogin }: LoginProps) {
 
   // Setup Google Sign In button if script loaded and client ID exists
   useEffect(() => {
-    if (clientId && (window as any).google) {
-      try {
-        (window as any).google.accounts.id.initialize({
-          client_id: clientId,
-          callback: handleCredentialResponse,
-        });
-        (window as any).google.accounts.id.renderButton(
-          document.getElementById('googleSignInBtn'),
-          { 
-            theme: 'filled_black', 
-            size: 'large', 
-            width: 320,
-            text: 'signin_with',
-            shape: 'pill'
+    if (!clientId) return;
+
+    let intervalId: any;
+
+    const initGoogleSignIn = () => {
+      if ((window as any).google) {
+        if (intervalId) clearInterval(intervalId);
+        try {
+          (window as any).google.accounts.id.initialize({
+            client_id: clientId,
+            callback: handleCredentialResponse,
+          });
+          const btnElem = document.getElementById('googleSignInBtn');
+          if (btnElem) {
+            (window as any).google.accounts.id.renderButton(
+              btnElem,
+              { 
+                theme: 'filled_black', 
+                size: 'large', 
+                width: 320,
+                text: 'signin_with',
+                shape: 'pill'
+              }
+            );
           }
-        );
-      } catch (e) {
-        console.error('Google Auth Init Failed', e);
-        setError('Google authentication initialization failed. Check your Client ID.');
+        } catch (e) {
+          console.error('Google Auth Init Failed', e);
+          setError('Google authentication initialization failed. Check your Client ID.');
+        }
       }
+    };
+
+    // Try immediately
+    initGoogleSignIn();
+
+    // If not loaded yet, poll until it is
+    if (!(window as any).google) {
+      intervalId = setInterval(initGoogleSignIn, 100);
     }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
   }, [clientId]);
 
   return (
-    <div className="absolute inset-0 bg-[#05070A] overflow-y-auto px-6 py-8 flex flex-col justify-between text-white no-scrollbar select-none">
+    <div className="absolute inset-0 bg-[#05070A] overflow-y-auto px-6 pt-[calc(env(safe-area-inset-top,0px)+32px)] pb-[calc(env(safe-area-inset-bottom,0px)+20px)] flex flex-col justify-between text-white no-scrollbar select-none">
       <div className="absolute top-0 left-0 right-0 h-48 bg-gradient-to-b from-blue-600/10 to-transparent pointer-events-none" />
 
       {/* Top Bar / App Header */}
@@ -113,15 +135,17 @@ export default function Login({ onLogin }: LoginProps) {
           </span>
 
           {clientId ? (
-            <div className="flex flex-col items-center justify-center py-4 space-y-4">
-              <div id="googleSignInBtn" className="my-2 z-20"></div>
+            <div className="flex flex-col items-center justify-center py-8 px-4 bg-[#161B22]/50 border border-slate-800/80 rounded-2xl space-y-4 relative overflow-hidden">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.06)_0%,transparent_70%)] pointer-events-none" />
               
-              <button
-                onClick={() => handleSaveClientId('')}
-                className="text-[9px] text-slate-500 hover:text-slate-350 underline uppercase tracking-wider"
-              >
-                Change Client ID Config
-              </button>
+              {/* Outer ring glow */}
+              <div className="relative p-0.5 rounded-full bg-gradient-to-r from-blue-600/30 to-indigo-600/30 shadow-xl shadow-blue-500/10">
+                <div id="googleSignInBtn" className="z-20 relative rounded-full overflow-hidden"></div>
+              </div>
+              
+              <p className="text-[10px] text-slate-400 leading-relaxed max-w-[240px] text-center font-medium">
+                Sign in securely with Google. Your ledger activity is saved locally and never shared.
+              </p>
             </div>
           ) : (
             <form 
