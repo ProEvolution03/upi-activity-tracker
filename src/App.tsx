@@ -222,6 +222,15 @@ export default function App() {
 
       // Perform background cloud sync, then enable saving triggers
       fetchFromCloud(user.email, activeAccts, activeTxs)
+        .then((cloudResult) => {
+          // If cloudResult is null, it means either:
+          // 1. Cloud was empty (404/no record).
+          // 2. Local storage has newer or more progress than the cloud.
+          // In either case, if we have local data, upload it to cloud to synchronize.
+          if (!cloudResult && activeAccts.length > 0) {
+            uploadToCloud(user.email, activeAccts, activeTxs);
+          }
+        })
         .catch((e) => console.error('Cloud fetch failed', e))
         .finally(() => {
           isLoadedRef.current = true;
