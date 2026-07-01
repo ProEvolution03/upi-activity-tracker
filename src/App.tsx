@@ -173,6 +173,9 @@ export default function App() {
       return;
     }
 
+    isLoadedRef.current = false;
+    setIsLoaded(false);
+
     try {
       let storedAccts = localStorage.getItem(`upitrack_accounts_${user.email}`);
       let storedTxs = localStorage.getItem(`upitrack_transactions_${user.email}`);
@@ -203,15 +206,9 @@ export default function App() {
 
       if (storedAccts) {
         activeAccts = JSON.parse(storedAccts);
-        setAccounts(activeAccts);
-      } else {
-        setAccounts([]);
       }
       if (storedTxs) {
         activeTxs = JSON.parse(storedTxs);
-        setTransactions(activeTxs);
-      } else {
-        setTransactions([]);
       }
       if (storedWrapMonth) {
         setLastShownWrap(storedWrapMonth);
@@ -219,11 +216,17 @@ export default function App() {
         setLastShownWrap('');
       }
       
-      isLoadedRef.current = true;
-      setIsLoaded(true);
+      // Update state immediately with cached data
+      setAccounts(activeAccts);
+      setTransactions(activeTxs);
 
-      // Perform background cloud sync
-      fetchFromCloud(user.email, activeAccts, activeTxs);
+      // Perform background cloud sync, then enable saving triggers
+      fetchFromCloud(user.email, activeAccts, activeTxs)
+        .catch((e) => console.error('Cloud fetch failed', e))
+        .finally(() => {
+          isLoadedRef.current = true;
+          setIsLoaded(true);
+        });
 
     } catch (e) {
       console.error('Error parsing user localStorage keys', e);
@@ -572,6 +575,20 @@ export default function App() {
       <div className="h-[100dvh] w-screen bg-[#030406] text-white flex items-center justify-center font-sans antialiased p-0 sm:p-4 overflow-hidden">
         <div className="w-full max-w-md h-full sm:h-[812px] sm:max-h-[850px] sm:rounded-[40px] sm:border-8 sm:border-slate-900 bg-[#05070A] relative flex flex-col overflow-hidden shadow-2xl">
           <Login onLogin={(u) => setUser(u)} />
+        </div>
+      </div>
+    );
+  }
+
+  // If we are currently checking or downloading data from the cloud, render loading state
+  if (!isLoaded) {
+    return (
+      <div className="h-[100dvh] w-screen bg-[#030406] text-white flex items-center justify-center font-sans antialiased p-0 sm:p-4 overflow-hidden">
+        <div className="w-full max-w-md h-full sm:h-[812px] sm:max-h-[850px] sm:rounded-[36px] sm:border-8 sm:border-slate-900 bg-[#05070A] relative flex flex-col items-center justify-center overflow-hidden shadow-2xl select-none">
+          <div className="flex flex-col items-center space-y-4">
+            <div className="w-10 h-10 border-4 border-t-blue-500 border-r-slate-800 border-b-slate-800 border-l-slate-800 rounded-full animate-spin"></div>
+            <span className="text-xs uppercase font-mono font-bold tracking-widest text-slate-500">Checking Cloud Vault...</span>
+          </div>
         </div>
       </div>
     );
